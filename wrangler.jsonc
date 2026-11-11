@@ -1,0 +1,41 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+
+  // Worker 名称。workers.dev 子域名会用它，改名会导致访问地址变化
+  "name": "csv-kv-backup",
+  "main": "src/index.js",
+
+  // 用今天或更早的日期都行；设成未来日期会被拒绝部署
+  "compatibility_date": "2026-11-11",
+
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    // 只有 /api/* 先交给 Worker，其余请求直接由静态资产处理（更快、不计入 Worker 调用）
+    "run_worker_first": ["/api/*"]
+  },
+
+  // KV 绑定。
+  //
+  // 绑定必须写在这里：Workers 每次部署都会按这份配置重写绑定列表，
+  // 只在面板里加的绑定会被下一次部署清掉。
+  //
+  // 首次使用：去 Cloudflare 面板 Workers & Pages → KV 建一个命名空间，
+  // 把它的 id 填到下面。不填 id 虽然能自动创建，但 Workers Builds
+  // 下第二次部署会报 10014（自动创建不幂等），所以这里要求显式填写。
+  "kv_namespaces": [
+    {
+      "binding": "CSV_KV",
+      "id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+    }
+  ],
+
+  // 非机密变量放这里；ACCESS_PASSWORD 之类的密钥请用面板的 Secrets，别写进仓库
+  "vars": {
+    "PUBLIC_ORIGIN": ""
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}

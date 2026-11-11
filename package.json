@@ -5,9 +5,11 @@
   "type": "module",
   "description": "把 CSV 类文件备份到 Cloudflare KV 的小工具（部署在 Cloudflare Pages）",
   "scripts": {
-    "test": "node test/run-tests.mjs",
+    "test": "node test/check-config.mjs && node test/run-tests.mjs",
+    "test:unit": "node test/run-tests.mjs",
+    "check": "node test/check-config.mjs",
     "start": "node dev.mjs",
-    "dev": "npx wrangler pages dev public --kv CSV_KV"
+    "start:worker": "node dev-worker.mjs"
   },
   "engines": {
     "node": ">=18"

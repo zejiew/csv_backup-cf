@@ -1,7 +1,7 @@
 # CSV 备份柜
 
 把 CSV 一类的小文件（台账、导出表、日志）备份到 **Cloudflare KV**，网页上和命令行都能推。
-部署在 **Cloudflare Pages** 上，不花钱：免费版给 1 GB 存储、每天 1000 次写入 / 10 万次读取。
+部署在 **Cloudflare Workers**（静态资产），不花钱：免费版给 1 GB 存储、每天 1000 次写入 / 10 万次读取。
 
 ![接口示意](https://img.shields.io/badge/API-REST-2563eb) ![零依赖](https://img.shields.io/badge/dependencies-0-067647)
 
@@ -30,79 +30,73 @@ Cloudflare KV 刚好够：写进去就跑，不用管机器。但它有几个硬
 - 一键**整包导出**成 zip（内含 `_manifest.json`），换机器时带走
 - 命令行 / 定时任务用 `API_TOKEN` 直接 `curl` 推送，不用管 cookie
 
-## 部署：一键（推荐，不用命令行）
+---
 
-不需要 wrangler、不需要本机装 Node，全程在浏览器里点。
+## 部署
 
-### 1. 仓库
+代码在 <https://github.com/zejiew/csv_backup-cf>。下面以「连 Git 自动部署」为主，全程在浏览器里点。
 
-代码已经在 <https://github.com/zejiew/csv_backup-cf>。
-要放到自己账号下就 fork 一份，或者新建空仓库把 `csv-backup/` 目录里的东西推到根目录
-（`functions/`、`public/` 要在仓库根，别多套一层）。
+> **先看一条坑**：如果你是在 Cloudflare 建了一个 **Worker** 再连仓库，那么这个仓库里必须有
+> `src/index.js`（本项目已有）——没有的话 Worker 会被判成「只有静态资产」，
+> 面板会禁用变量和绑定，报 *「不能将变量添加到只有静态资产的 Worker」*。
 
-### 2. Pages 里连仓库
+### 1. 先建 KV 命名空间
 
-Cloudflare Dashboard → **Workers & Pages** → **Create** → **Pages** → **Connect to Git** → 选这个仓库。
+Dashboard → **Storage & Databases** → **KV** → **Create instance**，名字随意（比如 `csv-backup-kv`）。
 
-构建配置照下面填，**这一步填错是最常见的失败原因**：
+建好后进入该命名空间，复制它的 **ID**（一串十六进制），下一步要用。
+
+### 2. 把 id 填进 wrangler.jsonc
+
+```jsonc
+"kv_namespaces": [
+  {
+    "binding": "CSV_KV",
+    "id": "把刚才复制的 id 粘这里"
+  }
+],
+```
+
+提交并推送。
+
+> 为什么必须写在文件里：Workers **每次部署都会按 `wrangler.jsonc` 重写绑定列表**，
+> 只在面板里手加的绑定，下次部署就没了。
+> 为什么不留给自动创建：Workers Builds 下自动创建不幂等，第二次部署会报 `10014`。
+
+### 3. 连仓库
+
+Dashboard → **Workers & Pages** → **Create** → **Connect to Git**（选 Worker，不是 Pages）→ 选仓库。
+
+构建配置：
 
 | 配置项 | 填什么 |
 |---|---|
-| Framework preset | `None` |
 | Build command | **留空**（没有构建步骤，别填 `npm run build`） |
-| Build output directory | `public` |
-| Root directory | 留空（仓库根就是项目根） |
+| Deploy command | 默认的 `npx wrangler deploy` 即可 |
+| Root directory | 留空 |
 
-点 **Save and Deploy**。第一次构建会「成功」，但页面会告诉你还差配置——这是故意的，见下一步。
+### 4. 加口令（**必须**，不加就拒绝服务）
 
-### 3. 面板里加两样东西
+Worker → **Settings** → **Variables and Secrets** → **Add**（类型选 **Secret**）：
 
-**a) KV 绑定**（存数据用）
+- `ACCESS_PASSWORD` = 你的登录密码
 
-项目 → **Settings** → **Bindings** → **Add** → **KV namespace**
+密钥保存在面板里，**不会被部署覆盖**。可选：`API_TOKEN`（脚本推送用）、
+`SESSION_SECRET`（换口令时不让所有会话一起掉线）、`PUBLIC_ORIGIN`（你的正式域名）。
 
-- Variable name：`CSV_KV` ← 必须一模一样
-- KV namespace：没有就先去 **Workers & Pages → KV** 建一个（名字随意）
+### 5. 部署完成后
 
-> 绑定名写成 `csv_kv` 也能认（大小写和横线会自动归一），但别写成 `MY_KV` 这种
-> 认不出来的名字——真写错了，页面会直接把该填什么写在屏幕上。
+打开 `https://<worker名>.<你的子域>.workers.dev`，输口令就能用了。
 
-**b) 访问口令**（不加就等于拒绝服务）
+> 首次打开若看到「还差一步」的清单，说明 KV 绑定或口令还没生效，
+> 照清单补完点「重新检测」即可，不用猜。
 
-项目 → **Settings** → **Environment variables** → **Add**
+### 也可用 Pages 部署
 
-- Name：`ACCESS_PASSWORD`
-- Value：你的登录密码
-- 类型：**Secret**（加密存储，构建日志里看不到）
-
-可选：`API_TOKEN`（给脚本推送用）、`SESSION_SECRET`（换口令时不让所有会话一起掉线）、
-`PUBLIC_ORIGIN`（填你的正式域名，如 `https://backup.example.com`）。
-
-### 4. 重新部署一次
-
-环境变量和绑定改完要触发一次新构建才生效：**Deployments** → 右上 **Retry deployment**
-（或者随便推一个 commit）。
-
-打开 `https://<项目名>.pages.dev`，输口令就能用了。
-
-> **部署完看到「还差一步」的页面是正常的。** 上面缺哪项它就列哪项，还带「去哪儿点」，
-> 补完点「重新检测」即可，不用猜。
+仓库同时保留了 Pages 形态（`functions/` 目录 + `public/_routes.json`），
+建 Pages 项目连同一个仓库、Build output directory 填 `public` 也能跑，代码完全一致。
 
 ---
-
-## 部署：命令行（可选）
-
-想用 CLI 或自己的 CI 时：
-
-```bash
-cp wrangler.toml.example wrangler.toml     # 把 id 填进去
-npx wrangler kv namespace create CSV_KV
-npx wrangler pages deploy public --project-name csv-kv-backup
-npx wrangler pages secret put ACCESS_PASSWORD --project-name csv-kv-backup
-```
-
-两种方式**不要混用**：用面板管绑定，就别让 `wrangler.toml` 里再声明一份
-（仓库里默认只有 `.example`，就是为此）。
 
 ## 命令行推送
 
@@ -127,7 +121,7 @@ curl -X POST 'https://你的域名/api/files?name=库存表-2026-03.csv' \
      --data-binary @库存表-2026-03.csv
 ```
 
-接进你现有的导出流程（Windows 的 `.bat`、`cron`、GitHub Actions 都行）：
+接进你现有的导出流程（`.bat`、`cron`、GitHub Actions 都行）：
 
 ```bash
 #!/usr/bin/env bash
@@ -148,7 +142,7 @@ curl -fsS -X POST "https://你的域名/api/files?name=库存表-${STAMP}.csv&ta
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/health` | 健康检查，不需要登录 |
+| GET | `/api/health` | 健康检查 + 配置自检，不需要登录 |
 | GET | `/api/me` | 当前是否已登录、服务端有没有配口令 |
 | POST | `/api/login` | `{"password":"..."}`，成功后下发 cookie |
 | POST | `/api/logout` | 清 cookie |
@@ -171,49 +165,38 @@ curl -fsS -X POST "https://你的域名/api/files?name=库存表-${STAMP}.csv&ta
 
 ## 本地跑
 
-**不想装任何东西**（推荐先这样看一眼）：
+**不想装任何东西**：
 
 ```bash
-node dev.mjs        # 等价 npm start
-# → http://127.0.0.1:8788   口令 dev-password
+node dev.mjs          # Pages 形态   → http://127.0.0.1:8788
+node dev-worker.mjs   # Workers 形态 → http://127.0.0.1:8789
 ```
 
-这是一个零依赖的本地预览服务器：`/api/*` 跑的是和线上**同一份** `functions/_lib/router.js`，
-静态文件直接读 `public/`，数据存在 `dev-data.json`（重启不丢，删掉即清空）。
-它模拟了 KV 的分页、1024 B metadata 上限、25 MiB value 上限，但**不模拟边缘缓存**。
+两个都是零依赖预览服务器，跑的是和线上**同一份**业务代码（`functions/_lib/`），
+数据存在 `dev-data.json`（重启不丢，删掉即清空）。
+`dev-worker.mjs` 走 `src/index.js`，用来验证「连 Git 建 Worker」那条路径的分流逻辑。
 
-换口令 / 换端口：
+换口令 / 端口 / 看未配置状态：
 
 ```bash
 ACCESS_PASSWORD=我的口令 PORT=9000 node dev.mjs
-
-# 想看「刚部署完、还没配 KV / 口令」那个自检页面长什么样：
-DEV_UNCONFIGURED=1 node dev.mjs
+DEV_UNCONFIGURED=1 node dev.mjs      # 预览「还没配 KV / 口令」的自检页面
 ```
 
-**用 wrangler 跑**（更接近线上，模拟边缘行为）：
+**不装 wrangler 也能自测**——后端逻辑用内存版 KV 跑，**53 个用例**：
 
 ```bash
-cp .dev.vars.example .dev.vars      # 改掉里面的口令
-npm run dev                          # npx wrangler pages dev public --kv CSV_KV
-```
-
-**不装 wrangler 也能自测**——后端逻辑用内存版 KV 跑，覆盖了 41 个用例：
-
-```bash
-npm test
+npm test              # 先校验 wrangler.jsonc，再跑 53 个用例
+npm run test:unit     # 只跑用例
+npm run check         # 只校验部署配置（会提醒你 KV id 还没填）
 ```
 
 ```
-  登录与会话
-    ✓ 密码正确时下发会话 cookie
-    ✓ 连续失败 10 次后被节流
-    ✓ 跨站 Origin 的写操作被拒（CSRF）
-  上传与列表
-    ✓ 内容完全相同的重复上传 → unchanged，不写 KV
-    ✓ 列表只花 1 次 KV list，不做 N+1 次 get
+  Workers 入口：静态与 API 分流
+    ✓ /api/health 交给 router，且返回正常 JSON
+    ✓ /apixxx 不是 API 路径，应走静态资产
   ...
-  全部通过（41 个）
+  全部通过（53 个）
 ```
 
 这套测试用的 KV 模拟**故意保留了真实 KV 的坑**（list 分页、metadata 1024 B 上限、value 25 MiB 上限），
@@ -228,6 +211,7 @@ npm test
 - **写个 D1 数据库**：就备份几个 CSV，查询需求约等于零，KV 更省事、也免费。
 - **前端上框架**：整个界面就三个文件，`fetch` + 原生 DOM 够了，免构建。
 - **用 JWT 库**：`crypto.subtle` 自带 HMAC，签个 `{exp}` 的 payload 就够，没必要引依赖。
+- **只放静态页、绑定在面板加**：会被下次部署覆盖，见上面第 2 步。
 
 ## 已知边界
 
@@ -241,18 +225,22 @@ npm test
 
 | 现象 | 原因 |
 |---|---|
-| 构建成功但页面一直转圈 | `_routes.json` 没进输出目录。它必须在 `public/` 里 |
-| 打开是 404 / 白屏 | Build output directory 填错了，应该是 `public`，不是 `csv-backup/public` |
-| 页面显示「还差一步」 | 上面第 3 步没配完，或者没点 Retry deployment |
-| 构建日志说 `Build command` 失败 | Build command 应该是**空的**，不要填 `npm run build` |
+| 提示「不能将变量添加到只有静态资产的 Worker」 | 仓库缺 `src/index.js`，或 `wrangler.jsonc` 里没有 `main` |
+| 部署报 `10014` | KV 的 `id` 那行还是占位符，去第 1 步建一个填上 |
+| 打开是 404 / 白屏 | `assets.directory` 应为 `./public` |
+| 页面显示「还差一步」 | KV 绑定或 `ACCESS_PASSWORD` 没生效，补完点「重新检测」 |
+| 加了绑定，下次部署又没了 | 绑定要写在 `wrangler.jsonc` 里，不是面板里 |
+| 构建日志说命令失败 | Build command 应该是**空的** |
 
 ## 目录
 
 ```
 csv-backup/
-├── functions/                  # 全部后端代码都在这个目录里，Git 集成直接认
-│   ├── api/[[path]].js         # 入口：/api/* 全交给 router
-│   └── _lib/                   # 实际逻辑（`_` 开头，不会变成路由）
+├── src/index.js                # Workers 入口：/api/* 交给 router，其余交给 ASSETS
+├── wrangler.jsonc              # Worker 配置（名称、静态资产、KV 绑定）
+├── functions/                  # 同一份后端代码，Pages 形态也从这里走
+│   ├── api/[[path]].js         # Pages 入口：/api/* 全交给 router
+│   └── _lib/                   # 实际逻辑
 │       ├── config.js           # 限制常量、凭据与 KV 绑定解析、配置自检
 │       ├── http.js             # 统一响应、错误类型、限长读体
 │       ├── auth.js             # HMAC 会话、API Token、CSRF、失败节流
@@ -263,10 +251,11 @@ csv-backup/
 │   ├── index.html
 │   ├── style.css
 │   ├── app.js
-│   └── _routes.json            # 只有 /api/* 走 Functions（必须放在构建输出目录里）
-├── test/                       # 内存 KV 模拟 + 41 个端到端用例
-├── dev.mjs                     # 零依赖本地预览（不装 wrangler 也能跑）
-├── wrangler.toml.example       # 只有 CLI 部署才需要复制成 wrangler.toml
+│   └── _routes.json            # Pages 形态用（Workers 形态忽略）
+├── test/                       # 内存 KV 模拟 + 53 个端到端用例
+├── dev.mjs                     # 本地预览（Pages 形态）
+├── dev-worker.mjs              # 本地预览（Workers 形态）
+├── wrangler.toml.example       # 只在用 `wrangler pages deploy` 时才需要
 └── .dev.vars.example           # wrangler 本地开发时的变量样例
 ```
 

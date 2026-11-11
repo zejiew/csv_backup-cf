@@ -5,6 +5,9 @@ import { suite, test, assert, run } from "./harness.mjs";
 import { createKv, createEnv, ctx } from "./mock-kv.mjs";
 import { handle } from "../functions/_lib/router.js";
 
+// 只做注册，不自行 run()——最后的 run() 由本文件统一调用
+import "./worker-tests.mjs";
+
 const CSV = "名称,数量,单价\n焊条,320,12.5\n砂纸,150,3.2\n";
 const CSV2 = "名称,数量,单价\n焊条,300,12.5\n砂纸,160,3.2\n";
 
