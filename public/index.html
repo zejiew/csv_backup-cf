@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<title>CSV 备份柜</title>
+<link rel="stylesheet" href="/style.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗄️</text></svg>" />
+</head>
+<body>
+
+<!-- 登录 -->
+<section id="gate" class="gate" hidden>
+  <form class="gate-card" id="login-form" autocomplete="on">
+    <div class="gate-mark">🗄️</div>
+    <h1>CSV 备份柜</h1>
+    <p class="gate-sub">数据存在你的 Cloudflare KV 里，只有拿着密码的人能看。</p>
+    <label class="field">
+      <span>访问密码</span>
+      <input type="password" id="password" name="password" placeholder="输入部署时设置的 ACCESS_PASSWORD"
+             autocomplete="current-password" required />
+    </label>
+    <button class="btn primary block" type="submit" id="login-btn">进入</button>
+    <p class="gate-msg" id="login-msg" role="status"></p>
+  </form>
+</section>
+
+<!-- 部署自检：缺绑定、缺口令时展示，页面自己告诉你要点哪里 -->
+<section id="setup" class="gate" hidden>
+  <div class="gate-card setup-card">
+    <div class="gate-mark">⚙️</div>
+    <h1 id="setup-title">还差一步</h1>
+    <p class="gate-sub" id="setup-sub">站点还没配置完。按下面补上，然后点「重新检测」。</p>
+    <ol class="setup-list" id="setup-list"></ol>
+    <button class="btn primary block" type="button" id="setup-retry">重新检测</button>
+    <p class="gate-msg" id="setup-msg" role="status"></p>
+  </div>
+</section>
+
+<!-- 主体 -->
+<div id="app" class="app" hidden>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">🗄️</span>
+      <span class="brand-name">CSV 备份柜</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn ghost" id="btn-export" title="把全部文件打成 zip 下载">整包导出</button>
+      <button class="btn ghost" id="btn-logout" title="退出登录">退出</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <!-- 概览 -->
+    <section class="stats" id="stats" aria-label="存储概览"></section>
+
+    <!-- 上传 -->
+    <section class="dropzone" id="dropzone" tabindex="0" role="button"
+             aria-label="拖入文件，或点击选择文件">
+      <input type="file" id="file-input" multiple accept=".csv,.tsv,.txt,.json,.md,.log,.ndjson,text/*" hidden />
+      <div class="dz-inner">
+        <div class="dz-icon">⬆</div>
+        <div class="dz-title">拖文件进来，或点击选择</div>
+        <div class="dz-hint">CSV / TSV / JSON / TXT，单个最大 <span id="max-size">20 MB</span>；同名文件自动留旧版本</div>
+      </div>
+      <div class="dz-progress" id="up-progress" hidden>
+        <div class="dz-bar"><i></i></div>
+        <div class="dz-text"></div>
+      </div>
+    </section>
+
+    <!-- 工具条 -->
+    <section class="toolbar">
+      <div class="search">
+        <span class="search-icon">🔍</span>
+        <input type="search" id="search" placeholder="搜文件名 / 标签 / 内容片段…" autocomplete="off" />
+        <button class="search-clear" id="search-clear" hidden title="清空">×</button>
+      </div>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-view="files" role="tab">文件 <span class="tab-n" id="n-files">0</span></button>
+        <button class="tab" data-view="trash" role="tab">回收站 <span class="tab-n" id="n-trash">0</span></button>
+      </div>
+      <select id="sort" class="select" title="排序">
+        <option value="updated">按更新时间</option>
+        <option value="name">按文件名</option>
+        <option value="size">按大小</option>
+      </select>
+    </section>
+
+    <section class="tagbar" id="tagbar" hidden></section>
+
+    <!-- 列表 -->
+    <section id="list-wrap" class="list-wrap" aria-live="polite"></section>
+
+    <footer class="foot">
+      <span id="foot-note">数据存放在 Cloudflare KV（免费版：每天 1000 次写入 / 10 万次读取，单文件 25 MiB）</span>
+      <button class="link" id="btn-api">接口说明</button>
+    </footer>
+  </main>
+</div>
+
+<!-- 改名 / 标签 -->
+<dialog id="edit-dialog" class="dialog">
+  <form method="dialog" class="dialog-inner" id="edit-form">
+    <h2>编辑文件信息</h2>
+    <label class="field">
+      <span>文件名</span>
+      <input type="text" id="edit-name" maxlength="200" autocomplete="off" />
+    </label>
+    <label class="field">
+      <span>标签（逗号分隔，最多 8 个，每个 ≤24 字）</span>
+      <input type="text" id="edit-tags" autocomplete="off" placeholder="例如：物料, 2026-03" />
+    </label>
+    <div class="dialog-actions">
+      <button class="btn" value="cancel">取消</button>
+      <button class="btn primary" value="save">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 接口说明 / 上传用法 -->
+<dialog id="api-dialog" class="dialog">
+  <form method="dialog" class="dialog-inner">
+    <h2>从脚本上传（可选）</h2>
+    <p class="muted">在 Pages 里配置 <code>API_TOKEN</code> 后，可以用 token 直接推送，适合挂到定时任务里。</p>
+    <pre class="code" id="api-sample"></pre>
+    <div class="dialog-actions">
+      <button class="btn">知道了</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 版本历史 -->
+<dialog id="ver-dialog" class="dialog">
+  <form method="dialog" class="dialog-inner">
+    <h2 id="ver-title">版本历史</h2>
+    <div id="ver-body" class="ver-list"></div>
+    <div class="dialog-actions">
+      <button class="btn">关闭</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

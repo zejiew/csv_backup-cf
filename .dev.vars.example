@@ -1,0 +1,5 @@
+# Cloudflare Pages 本地开发用（wrangler pages dev 会读它）
+# 这个文件不要提交到仓库（已在 .gitignore 里）
+ACCESS_PASSWORD=dev-password
+API_TOKEN=dev-token
+SESSION_SECRET=dev-session-secret-please-change

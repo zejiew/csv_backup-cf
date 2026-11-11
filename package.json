@@ -1,0 +1,15 @@
+{
+  "name": "csv-kv-backup",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "把 CSV 类文件备份到 Cloudflare KV 的小工具（部署在 Cloudflare Pages）",
+  "scripts": {
+    "test": "node test/run-tests.mjs",
+    "start": "node dev.mjs",
+    "dev": "npx wrangler pages dev public --kv CSV_KV"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

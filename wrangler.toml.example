@@ -1,0 +1,28 @@
+# ─────────────────────────────────────────────────────────────
+# 这个文件只有「用 wrangler CLI 部署」时才需要。
+#
+# 用 Cloudflare Dashboard 连 Git 一键部署的话，**不要**把它复制成
+# wrangler.toml —— 构建输出目录和 KV 绑定都在面板里填，见 README。
+# （面板里填错/漏填会更容易看懂，而且这个文件里带占位 id 反而会让构建失败。）
+#
+# 用 CLI 时：
+#   cp wrangler.toml.example wrangler.toml
+#   npx wrangler kv namespace create CSV_KV     # 把返回的 id 填到下面
+#   npx wrangler pages deploy public --project-name csv-kv-backup
+# ─────────────────────────────────────────────────────────────
+
+name = "csv-kv-backup"
+compatibility_date = "2026-01-01"
+pages_build_output_dir = "./public"
+
+# KV 绑定：id 换成你自己的命名空间 id
+[[kv_namespaces]]
+binding = "CSV_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+# 非机密变量。ACCESS_PASSWORD / API_TOKEN / SESSION_SECRET 用
+#   npx wrangler pages secret put ACCESS_PASSWORD
+# 或面板 Settings → Variables and Secrets（别写进仓库）。
+[vars]
+# 例如 "https://backup.example.com"，用于校验写操作的 Origin；留空则按请求自身 origin 判断
+PUBLIC_ORIGIN = ""
