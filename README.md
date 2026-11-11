@@ -34,9 +34,11 @@ Cloudflare KV 刚好够：写进去就跑，不用管机器。但它有几个硬
 
 不需要 wrangler、不需要本机装 Node，全程在浏览器里点。
 
-### 1. 把仓库推到 GitHub
+### 1. 仓库
 
-新建一个空仓库，把 `csv-backup/` 目录里的东西推到根目录（`functions/`、`public/` 要在仓库根，别多套一层）。
+代码已经在 <https://github.com/zejiew/csv_backup-cf>。
+要放到自己账号下就 fork 一份，或者新建空仓库把 `csv-backup/` 目录里的东西推到根目录
+（`functions/`、`public/` 要在仓库根，别多套一层）。
 
 ### 2. Pages 里连仓库
 
