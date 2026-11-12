@@ -29,6 +29,27 @@ const KEY_LIMIT = 512;
 const VALUE_LIMIT = 25 * 1024 * 1024;
 const META_LIMIT = 1024;
 
+// Cloudflare KV 的 cacheTtl 最小 60 秒。传 0（想「绕过缓存」）会被判为非法参数，
+// 线上直接抛错——曾经因此让下载 / 删除 / 导出全部返回 500，而本地 mock 不校验，
+// 所以测不出来。这里照着线上的规则拦一道，让同类问题在本地就暴露。
+const CACHE_TTL_MIN = 60;
+
+function assertReadOptions(options) {
+  if (!options || options.cacheTtl === undefined) return;
+  const ttl = options.cacheTtl;
+  if (typeof ttl !== "number" || !Number.isFinite(ttl)) {
+    throw new Error(
+      `KV cacheTtl 必须是数字，收到 ${JSON.stringify(ttl)}（线上同样会报错）`
+    );
+  }
+  if (ttl < CACHE_TTL_MIN) {
+    throw new Error(
+      `KV cacheTtl 不能小于 ${CACHE_TTL_MIN} 秒（收到 ${ttl}）。` +
+      `Cloudflare KV 不接受 0 或更小的值，线上会直接 500。`
+    );
+  }
+}
+
 let db = { keys: {} };
 if (existsSync(DATA_FILE)) {
   try {
@@ -52,6 +73,7 @@ function persist() {
 
 const kv = {
   async get(key, options) {
+    assertReadOptions(options);
     const entry = db.keys[key];
     if (!entry) return null;
     const bytes = Buffer.from(entry.b64 || "", "base64");
@@ -63,6 +85,7 @@ const kv = {
     return bytes.toString("utf8");
   },
   async getWithMetadata(key, options) {
+    assertReadOptions(options);
     const entry = db.keys[key];
     if (!entry) return { value: null, metadata: null };
     const bytes = Buffer.from(entry.b64 || "", "base64");
@@ -149,6 +172,9 @@ const env = {
   API_TOKEN: process.env.API_TOKEN || "",
   SESSION_SECRET: process.env.SESSION_SECRET || "dev-session-secret-change-me",
   PUBLIC_ORIGIN: "",
+  // 本地默认把真实错误带出来，否则 500 只会显示「服务器内部错误」，
+  // 排查时得去翻日志。线上不设这个变量，保持对外只给通用提示。
+  DEBUG_ERRORS: process.env.DEBUG_ERRORS || "1",
 };
 
 // DEV_UNCONFIGURED=1 时假装还没在面板里配好，用来看首次部署那个「还差一步」的页面

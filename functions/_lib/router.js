@@ -108,7 +108,16 @@ export async function handle(context) {
       return withCors(fail(err.status, err.code, err.message, extra), runEnv);
     }
     console.error("unhandled", route, err && err.stack);
-    return withCors(fail(500, "internal", "服务器内部错误，请查看 Pages 函数日志"), runEnv);
+    // DEBUG_ERRORS=1 时把真实错误带出来，方便排查。
+    // 生产环境默认关闭，避免把内部堆栈泄露给前端。
+    const debug = String(runEnv?.DEBUG_ERRORS || "").trim() === "1";
+    return withCors(
+      fail(500, "internal",
+        debug
+          ? `服务器内部错误：${err && (err.message || err)}`
+          : "服务器内部错误，请查看 Pages 函数日志"),
+      runEnv
+    );
   }
 }
 

@@ -181,8 +181,10 @@ export async function listTrash(env) {
 export async function getFile(env, id) {
   const { value, metadata } = await env.CSV_KV.getWithMetadata(K_FILE + id, {
     type: "arrayBuffer",
-    // 刚写入后立刻读要看到最新结果，不能用默认 60s 缓存
-    cacheTtl: 0,
+    // Cloudflare KV 的 cacheTtl 最小值是 60 秒，传 0 会被判为非法参数直接抛错
+    // （曾因此导致下载/删除全部 500）。想要「刚写完立刻读到最新」在这里做不到，
+    // 60 秒内其他边缘节点可能读到旧值，对备份柜可以接受。
+    cacheTtl: 60,
   });
   if (!value) return null;
   return { bytes: new Uint8Array(value), meta: fromMeta(id, metadata) };
@@ -191,7 +193,7 @@ export async function getFile(env, id) {
 export async function getFileMeta(env, id) {
   const { metadata } = await env.CSV_KV.getWithMetadata(K_FILE + id, {
     type: "arrayBuffer",
-    cacheTtl: 0,
+    cacheTtl: 60,
   });
   if (!metadata) return null;
   return fromMeta(id, metadata);
@@ -218,7 +220,7 @@ export async function getVersion(env, id, seq) {
   const key = `${K_VER}${id}:${pad(seq)}`;
   const { value, metadata } = await env.CSV_KV.getWithMetadata(key, {
     type: "arrayBuffer",
-    cacheTtl: 0,
+    cacheTtl: 60,
   });
   if (!value) return null;
   return { bytes: new Uint8Array(value), meta: fromMeta(id, metadata) };
@@ -350,7 +352,7 @@ export async function trashFile(env, id) {
 export async function restoreFromTrash(env, id) {
   const { value, metadata } = await env.CSV_KV.getWithMetadata(K_TRASH + id, {
     type: "arrayBuffer",
-    cacheTtl: 0,
+    cacheTtl: 60,
   });
   if (!value) throw new HttpError(404, "not_found", "回收站里没有这个文件");
   const bytes = new Uint8Array(value);
